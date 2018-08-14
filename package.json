@@ -1,0 +1,28 @@
+{
+  "name": "moose.js",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "acorn": "^5.7.1",
+    "acorn-class-fields": "^0.1.2",
+    "acorn-es7": "^0.1.0",
+    "acorn-jsx": "^4.1.1",
+    "acorn-stage3": "^0.6.0",
+    "acorn-static-class-property-initializer": "^1.0.0",
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-plugin-add-module-exports": "^0.2.1",
+    "babel-preset-env": "^1.7.0",
+    "babel-preset-stage-0": "^6.24.1",
+    "babel-register": "^6.26.0",
+    "lodash": "^4.17.10",
+    "mocha": "^5.2.0",
+    "should": "^13.2.3"
+  }
+}

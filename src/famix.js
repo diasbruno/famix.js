@@ -36,3 +36,17 @@ export const UnknownVariable = 'FAMIX.UnknownVariable';
 export const AnnotationTypeAttribute = 'FAMIX.AnnotationTypeAttribute';
 export const FileAnchor = 'FAMIX.FileAnchor';
 export const SourceTextAnchor = 'FAMIX.SourceTextAnchor';
+
+// Javascript specific
+
+/*
+  Unresolved imported symbol are used for later
+  resolved.
+
+  {
+    source: filename,
+    name: varName,
+    parentScope: (ref to local package)
+  }
+*/
+export const UnresolvedImportedSymbol = 'Famix.UnresolvedImportedSymbol';

@@ -37,6 +37,8 @@ import {
   AnnotationTypeAttribute,
   FileAnchor,
   SourceTextAnchor,
+  // Javascript specific
+  UnresolvedImportedSymbol
 } from './famix.js';
 
 var uniqueId = (function() {
@@ -49,12 +51,20 @@ var uniqueId = (function() {
 
 const ImportDeclaration = (acc, n, opts) => {
   var localId = uniqueId();
-  var obj = {
-    id: localId,
-    type: SourceAnchor,
-    source: n.source.value
-  };
-  acc.sources.push(obj);
+  const items = n.specifiers.map(item => {
+    var obj = {
+      id: localId,
+      type: UnresolvedImportedSymbol,
+      name: item.local.name,
+      source: n.source.value,
+      parentScope: opts.parentPackage
+    };
+    if (item.imported && item.imported.name != item.local.name) {
+      obj.aliasOf = item.imported.name;
+    }
+    return obj;
+  });
+  acc.unresolved = acc.unresolved.concat(items);
   return acc;
 };
 
@@ -237,6 +247,7 @@ const model = {
 };
 
 var makeStash = () => ({
+  unresolved: [],
   files: [],
   namespaces: [],
   sources: [],
@@ -249,6 +260,10 @@ var makeStash = () => ({
 });
 
 export const toFamixTable = {
+  [UnresolvedImportedSymbol]: i => `(${i.type} (id: ${i.id})
+   (name '${i.name}')
+   (parentScope (ref: ${i.parentScope.ref}))${i.aliasOf ? `
+   (aliasOf (name ${i.aliasOf}))`: ")"}`,
   [FileAnchor]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}'))`,
   [SourceAnchor]: i => `(${i.type} (id: ${i.id})
@@ -260,7 +275,7 @@ export const toFamixTable = {
    (parentScope (ref: ${i.parentScope.ref}))`,
   [Class]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
-   (parentPackage (ref: ${i.parentPackage}))`,
+   (parentPackage (ref: ${i.parentPackage.ref}))`,
   [Attribute]: i => `(${i.type}
    (name '${i.name}')
    (parentType (ref: ${i.parentType})))`,
@@ -276,7 +291,7 @@ export const toFamixTable = {
   [Function]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
    (signature '${i.name}(${i.signature})')
-   (parentPackage (ref: ${i.parentPackage}))`,
+   (parentPackage (ref: ${i.parentPackage.ref}))`,
   [Variable]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
    (isConstant ${i.isConstant}))`
@@ -315,6 +330,7 @@ export const process = (pkg, filename, ast) => {
   });
 
   return ast.body.reduce((acc, b) => render(acc, b, {
-    parentPackage: nslocalId
+    parentPackage: { ref: nslocalId },
+    parentNS: { ref: pkg.id }
   }), stash);
 };

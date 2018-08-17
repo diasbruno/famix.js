@@ -49,4 +49,9 @@ export const SourceTextAnchor = 'FAMIX.SourceTextAnchor';
     parentScope: (ref to local package)
   }
 */
-export const UnresolvedImportedSymbol = 'Famix.UnresolvedImportedSymbol';
+export const UnresolvedImportedSymbol = 'FAMIX.UnresolvedImportedSymbol';
+
+// Some of the resolved references.
+export const ClassRef    = 'FAMIX.ClassRef';
+export const FunctionRef = 'FAMIX.FunctionRef';
+export const VariableRef = 'FAMIX.VariableRef';

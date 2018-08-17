@@ -20,11 +20,13 @@ import {
   Type,
   StructuralEntity,
   Function,
+  FunctionRef,
   Method,
   Namespace,
   Package,
   AnnotationType,
   Class,
+  ClassRef,
   PrimitiveType,
   TypeAlias,
   Attribute,
@@ -32,6 +34,7 @@ import {
   ImplicitVariable,
   LocalVariable,
   Variable,
+  VariableRef,
   Parameter,
   UnknownVariable,
   AnnotationTypeAttribute,
@@ -40,6 +43,8 @@ import {
   // Javascript specific
   UnresolvedImportedSymbol
 } from './famix.js';
+
+var SymbolTable = Symbol("symbols");
 
 var uniqueId = (function() {
   var id = 0;
@@ -50,10 +55,9 @@ var uniqueId = (function() {
 }());
 
 const ImportDeclaration = (acc, n, opts) => {
-  var localId = uniqueId();
   const items = n.specifiers.map(item => {
     var obj = {
-      id: localId,
+      id: uniqueId(),
       type: UnresolvedImportedSymbol,
       name: item.local.name,
       source: n.source.value,
@@ -62,6 +66,7 @@ const ImportDeclaration = (acc, n, opts) => {
     if (item.imported && item.imported.name != item.local.name) {
       obj.aliasOf = item.imported.name;
     }
+    acc[SymbolTable][obj.name] = obj;
     return obj;
   });
   acc.unresolved = acc.unresolved.concat(items);
@@ -82,11 +87,11 @@ const ImportDefaultSpecifier = (acc, n, opts) => {
 const ExportNamedDeclaration = (acc, n, opts) =>
   render(acc, n.declaration, { exported: true, ...opts });
 
-const VariableDeclaration = (acc, n, opts) => (n.expression) ?
-    render(n.expression, opts) :
-    n.declarations.reduce((acc, b) => render(acc, b, {
-  isConstant: n.kind == 'const' || false
-}), acc);
+const VariableDeclaration = (acc, n, opts) =>
+  n.expression ? render(n.expression, opts) :
+      n.declarations.reduce((acc, b) => render(acc, b, {
+        isConstant: n.kind == 'const' || false
+      }), acc);
 
 const VariableDeclarator = (acc, n, opts) => {
   var localId = uniqueId();
@@ -96,6 +101,7 @@ const VariableDeclarator = (acc, n, opts) => {
     type: Variable,
     ...opts
   };
+  acc[SymbolTable][obj.name] = obj;
   acc.variables.push(obj);
   return acc;
 };
@@ -105,10 +111,11 @@ const ExpressionStatement = (acc, n, opts) =>
 
 const ClassDeclaration = (acc, n, opts) => {
   var localId = uniqueId();
+  var name = (n.id || ({ name: "" })).name || "";
   var obj = {
     id: localId,
     type: Class,
-    name: (n.id || ({ name: "" })).name || "",
+    name: name,
     numberOfConstructorMethods: 0,
     // methods: Method* → parentType
     // weightOfAClass: Number
@@ -135,18 +142,25 @@ const ClassDeclaration = (acc, n, opts) => {
     ...{exported: false, ...opts}
   };
 
+  acc[SymbolTable][obj.name] = obj;
+
   acc.classes.push(obj);
   if (n.superClass) {
+    const found = acc[SymbolTable][n.superClass.name];
     acc.inheritances.push({
       type: Inheritance,
       subClass: { ref: localId },
-      superClass: {ref: acc.classes.find(c => c.name == n.superClass.name).id}
+      superClass: { ref: found.id }
     });
   }
 
-  acc = n.body.body.reduce((acc, b) => render(acc, b, {
-    ref: localId
-  }), acc);
+  acc = n.body.body.reduce(
+    (acc, b) => render(acc, b, {
+      ref: localId
+    }),
+    acc
+  );
+
   return acc;
 };
 
@@ -194,7 +208,7 @@ const MethodDefinition = (acc, n, opts) => {
     numberOfInvokedMethods: 0,
     hierarchyNestingLevel: 0
   };
-  acc.functions.push(obj);
+  acc.methods.push(obj);
   return acc;
 };
 
@@ -225,6 +239,7 @@ const FunctionDeclaration = (acc, n, opts) => {
     signature: intercalate(", ", n.params.map(p => p.name)),
     ...{exported: false, ...opts}
   };
+  acc[SymbolTable][obj.name] = obj;
   acc.functions.push(obj);
   return acc;
 };
@@ -247,16 +262,18 @@ const model = {
 };
 
 var makeStash = () => ({
+  [SymbolTable]: {},
   unresolved: [],
   files: [],
-  namespaces: [],
   sources: [],
+  namespaces: [],
   packages: [],
   classes: [],
   inheritances: [],
+  attributes: [],
+  methods: [],
   variables:[],
-  functions: [],
-  attributes: []
+  functions: []
 });
 
 export const toFamixTable = {
@@ -276,12 +293,15 @@ export const toFamixTable = {
   [Class]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
    (parentPackage (ref: ${i.parentPackage.ref}))`,
+  [ClassRef]: i => `(${i.type} (id: ${i.id})
+   (name '${i.name}')
+   (aliasOf (ref: ${i.aliasOf.ref}))`,
   [Attribute]: i => `(${i.type}
    (name '${i.name}')
    (parentType (ref: ${i.parentType})))`,
   [Method]: i => `(${i.type}
    (name '${i.name}')
-   (parentType (ref: ${i.parentType})
+   (parentType (ref: ${i.parentType}))
    (kind ${i.kind})
    (isGetter ${i.isGetter})
    (isSetter ${i.isSetter}))`,
@@ -292,9 +312,15 @@ export const toFamixTable = {
    (name '${i.name}')
    (signature '${i.name}(${i.signature})')
    (parentPackage (ref: ${i.parentPackage.ref}))`,
+  [FunctionRef]: i => `(${i.type} (id: ${i.id})
+   (name '${i.name}')
+   (aliasOf (ref: ${i.aliasOf.ref}))`,
   [Variable]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
-   (isConstant ${i.isConstant}))`
+   (isConstant ${i.isConstant}))`,
+  [VariableRef]: i => `(${i.type} (id: ${i.id})
+   (name '${i.name}')
+   (aliasOf (ref: ${i.aliasOf.ref}))`
 };
 
 export const toFamix = node => toFamixTable[node.type](node);
@@ -333,4 +359,70 @@ export const process = (pkg, filename, ast) => {
     parentPackage: { ref: nslocalId },
     parentNS: { ref: pkg.id }
   }), stash);
+};
+
+// famixes :: [{ filename, famix }]
+export const resolve = famixes => {
+  famixes.map(
+    ({ filename, famix }) => {
+      let remainUnresolvable = famix.unresolved.reduce(
+        (acc, b) => {
+          const head = b;
+          const resolveWithFamix = famixes.find(
+            f => f.filename == head.source
+          );
+
+
+          if (!resolveWithFamix) {
+            acc.push(b);
+            return acc;
+          }
+
+          const useFamix = resolveWithFamix.famix[SymbolTable];
+          const found = useFamix.hasOwnProperty(head.name) ?
+                useFamix[head.name] : null;
+
+          if (!found) {
+            acc.push(b);
+            return acc;
+          }
+
+          switch (found.type) {
+          case Function: {
+            famix.functions.push({
+              id: head.id,
+              type: FunctionRef,
+              name: head.name,
+              aliasOf: { ref: found.id }
+            });
+          } break;
+          case Class: {
+            famix.classes.push({
+              id: head.id,
+              type: ClassRef,
+              name: head.name,
+              aliasOf: { ref: found.id }
+            });
+          } break;
+          case Variable: {
+            famix.variables.push({
+              id: head.id,
+              type: VariableRef,
+              name: head.name,
+              aliasOf: { ref: found.id }
+            });
+          } break;
+          }
+          famix.unresolved.shift();
+
+          return acc;
+        },
+        [] // really unresolvable
+      );
+
+      famix.unresolved = remainUnresolvable;
+    }
+  );
+
+  return famixes.map(f => f.famix);
 };

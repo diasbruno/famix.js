@@ -2,7 +2,7 @@
 
 var _ = require('lodash');
 var fs = require('fs');
-var { declarePackage, process, toFamix } = require('./lib/transform');
+var { declarePackage, process, resolve, toFamix } = require('./lib/transform');
 var acorn = require('acorn');
 ['acorn-stage3/inject',
  'acorn-static-class-property-initializer/inject',
@@ -17,32 +17,40 @@ const pkg = declarePackage('test');
 const str = (acc, b) =>
   `${acc}${acc.length ? " ": ""}${toFamix(b)}\n`;
 
-console.log(`(${
-['./test.js',
- './test2.js'
-].map(
-  // build the ast of each source
-  filename => {
-    var f = fs.readFileSync(filename, 'utf8');
-    return {
-      filename: filename,
-      ast: acorn.parse(f, {
-        ecmaVersion: 8,
-        sourceType: "module",
-        plugins: {
-          staticClassPropertyInitializer: true,
-          classFields: true,
-          jsx: true,
-          stage3: true
-        }
-      })
-    };
-  }
+console.log(`(${resolve(
+  ['./test.js',
+   './test2.js'
+  ].map(
+    // build the ast of each source
+    filename => {
+      var f = fs.readFileSync(filename, 'utf8');
+      return {
+        filename: filename,
+        ast: acorn.parse(f, {
+          ecmaVersion: 8,
+          sourceType: "module",
+          plugins: {
+            staticClassPropertyInitializer: true,
+            classFields: true,
+            jsx: true,
+            stage3: true
+          }
+        })
+      };
+    }
+  ).map(
+    ({ filename, ast }) => {
+      return {
+       filename: filename,
+       famix: process(pkg, filename, ast)
+      };
+    }
+  )
 ).map(
   // process each ast
-  ({ filename, ast }) => {
+  famix => {
     return _.reduce(
-      process(pkg, filename, ast),
+      famix,
       (acc, b) => _.reduce(b, str, acc),
       ""
     );

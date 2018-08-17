@@ -1,5 +1,4 @@
 import a from 'y';
-import 'x';
 import s, { m, n } from 'x';
 
 export class A {
@@ -11,6 +10,8 @@ export class A {
 }
 
 class B {}
+
+class C {}
 
 class D extends B {}
 

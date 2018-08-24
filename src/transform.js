@@ -53,35 +53,48 @@ export const uniqueId = (function() {
   };
 }());
 
+export const finder = stash => f =>
+  stash.classes.find(f)   ||
+  stash.functions.find(f) ||
+  stash.variables.find(f) ||
+  stash.unresolved.find(f);
+
 export const SymbolTable = Symbol("symbols");
 
+const isLocalSourceImport = name =>
+  name[0] == '.' || name[0] == '/';
+
 const ImportDeclaration = (acc, n, opts) => {
+  var localid = uniqueId();
+  const obj = {
+    type: Namespace,
+    id: localid,
+    name: n.source.value,
+    parentScope: { ref: opts.parentPackage.ref }
+  };
+
+  acc[SymbolTable].add(obj.name);
+
   const items = n.specifiers.map(item => {
-    var obj = {
+    const obj = {
       id: uniqueId(),
       type: UnresolvedImportedSymbol,
       name: item.local.name,
       source: n.source.value,
       parentScope: opts.parentPackage
     };
+
     if (item.imported && item.imported.name != item.local.name) {
       obj.aliasOf = item.imported.name;
     }
-    acc[SymbolTable][obj.name] = obj;
+
+    acc[SymbolTable].add(obj.name);
+
     return obj;
   });
-  acc.unresolved = acc.unresolved.concat(items);
-  return acc;
-};
 
-const ImportDefaultSpecifier = (acc, n, opts) => {
-  var localId = uniqueId();
-  var obj = {
-    id: localId,
-    type: SourceAnchor,
-    source: n.source.value
-  };
-  acc.sources.push(obj);
+  acc.unresolved = acc.unresolved.concat(items);
+
   return acc;
 };
 
@@ -101,7 +114,7 @@ const VariableDeclarator = (acc, n, opts) => {
     type: Variable,
     ...opts
   };
-  acc[SymbolTable][obj.name] = obj;
+  acc[SymbolTable].add(obj.name);
   acc.variables.push(obj);
   return acc;
 };
@@ -130,16 +143,23 @@ const ClassDeclaration = (acc, n, opts) => {
     ...{exported: false, ...opts}
   };
 
-  acc[SymbolTable][obj.name] = obj;
+  acc[SymbolTable].add(obj.name);
 
   acc.classes.push(obj);
   if (n.superClass) {
-    const found = acc[SymbolTable][n.superClass.name];
-    acc.inheritances.push({
-      type: Inheritance,
-      subClass: { ref: localId },
-      superClass: { ref: found.id }
-    });
+    const has = acc[SymbolTable].has(n.superClass.name);
+
+    const checkNames = item => n.superClass.name == item.name;
+
+    if (has) {
+      const found = finder(acc)(checkNames);
+
+      acc.inheritances.push({
+        type: Inheritance,
+        subClass: { ref: localId },
+        superClass: { ref: found.id }
+      });
+    }
   }
 
   acc = n.body.body.reduce(
@@ -225,7 +245,7 @@ const FunctionDeclaration = (acc, n, opts) => {
     signature: intercalate(", ", n.params.map(p => p.name)),
     ...{exported: false, ...opts}
   };
-  acc[SymbolTable][obj.name] = obj;
+  acc[SymbolTable].add(obj.name);
   acc.functions.push(obj);
   return acc;
 };
@@ -247,7 +267,7 @@ const model = {
 };
 
 export const makeStash = () => ({
-  [SymbolTable]: {},
+  [SymbolTable]: new Set(),
   unresolved: [],
   files: [],
   sources: [],
@@ -280,7 +300,8 @@ export const toFamixTable = {
    (parentPackage (ref: ${i.parentPackage.ref})))`,
   [ClassRef]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
-   (aliasOf (ref: ${i.aliasOf.ref})))`,
+   (aliasOf (ref: ${i.aliasOf.ref}))
+   (parentScope (ref: ${i.parentScope.ref})))`,
   [Attribute]: i => `(${i.type}
    (name '${i.name}')
    (parentType (ref: ${i.parentType})))`,
@@ -299,13 +320,15 @@ export const toFamixTable = {
    (parentPackage (ref: ${i.parentPackage.ref})))`,
   [FunctionRef]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
-   (aliasOf (ref: ${i.aliasOf.ref})))`,
+   (aliasOf (ref: ${i.aliasOf.ref}))
+   (parentScope (ref: ${i.parentScope.ref})))`,
   [Variable]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
    (isConstant ${i.isConstant}))`,
   [VariableRef]: i => `(${i.type} (id: ${i.id})
    (name '${i.name}')
-   (aliasOf (ref: ${i.aliasOf.ref})))`
+   (aliasOf (ref: ${i.aliasOf.ref}))
+   (parentScope (ref: ${i.parentScope.ref}))`
 };
 
 export const toFamix = node => toFamixTable[node.type](node);
